@@ -143,7 +143,7 @@ class HproseClient(object):
                 tag = stream.read(1)
                 if tag == HproseTags.TagEnd:
                     break
-                else if tag == HproseTags.TagResult:
+                elif tag == HproseTags.TagResult:
                     if resultMode == HproseResultMode.Normal:
                         reader.reset()
                         result = reader.unserialize()
@@ -151,13 +151,13 @@ class HproseClient(object):
                         s = reader.readRaw()
                         result = s.getvalue()
                         s.close()
-                else if tag == HproseTags.TagArgument:
+                elif tag == HproseTags.TagArgument:
                     reader.reset()
                     a = reader.readList()
                     if isinstance(args, list):
                         for i in xrange(len(args)):
                             args[i] = a[i]
-                else if tag == HproseTags.TagError:
+                elif tag == HproseTags.TagError:
                     reader.reset()
                     error = reader.readString()
                 else:

@@ -186,6 +186,7 @@ class HproseRawReader(object):
             tag == HproseTags.TagTrue or
             tag == HproseTags.TagFalse or
             tag == HproseTags.TagNaN):
+            pass
         elif tag == HproseTags.TagInfinity:
             ostream.write(self.stream.read(1))
         elif (tag == HproseTags.TagInteger or
