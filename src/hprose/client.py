@@ -1,0 +1,174 @@
+############################################################
+#                                                          #
+#                          hprose                          #
+#                                                          #
+# Official WebSite: http://www.hprose.com/                 #
+#                   http://www.hprose.net/                 #
+#                   http://www.hprose.org/                 #
+#                                                          #
+############################################################
+
+############################################################
+#                                                          #
+# hprose/client.py                                         #
+#                                                          #
+# hprose client for python 2.3+                            #
+#                                                          #
+# LastModified: Mar 11, 2014                               #
+# Author: Ma Bingyao <andot@hprose.com>                    #
+#                                                          #
+############################################################
+
+import threading, types
+from sys import modules
+from hprose.io import *
+from hprose.common import *
+
+class _Method(object):
+    def __init__(self, invoke, name):
+        self.__invoke = invoke
+        self.__name = name
+    def __getattr__(self, name):
+        return _Method(self.__invoke, self.__name + '_' + name)
+    def __call__(self, *args, **kargs):
+        callback = kargs.get('callback', None)
+        onerror = kargs.get('onerror', None)
+        byref = kargs.get('byref', False)
+        resultMode = kargs.get('resultMode', HproseResultMode.Normal)
+        simple = kargs.get('simple', None)
+        return self.__invoke(self.__name, list(args), callback, onerror, byref, resultMode, simple)
+
+class _Proxy(object):
+    def __init__(self, invoke):
+        self.__invoke = invoke
+    def __getattr__(self, name):
+        return _Method(self.__invoke, name)
+
+class _AsyncInvoke(object):
+    def __init__(self, invoke, name, args, callback, onerror, byref, resultMode, simple):
+        self.__invoke = invoke
+        self.__name = name
+        self.__args = args
+        self.__callback = callback
+        self.__onerror = onerror
+        self.__byref = byref
+        self.__resultMode = resultMode
+        self.__simple = simple
+    def __call__(self):
+        try:
+            result = self.__invoke(self.__name, self.__args, self.__byref, self.__resultMode, self.__simple)
+            argcount = self.__callback.func_code.co_argcount
+            if argcount == 0:
+                self.__callback()
+            elif argcount == 1:
+                self.__callback(result)
+            else:
+                self.__callback(result, self.__args)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception, e:
+            if self.__onerror != None:
+                self.__onerror(self.__name, e)
+
+class HproseClient(object):
+    def __init__(self, uri = None):
+        self.onError = None
+        self.filter = HproseFilter()
+        self.simple = False
+        self.useService(uri)
+
+    def __getattr__(self, name):
+        return _Method(self.invoke, name)
+
+    def invoke(self, name, args = (), callback = None, onerror = None, byref = False, resultMode = HproseResultMode.Normal, simple = None):
+        if simple == None: simple = self.simple
+        if callback == None:
+            return self.__invoke(name, args, byref, resultMode, simple)
+        else:
+            if isinstance(callback, (str, unicode)):
+                callback = getattr(modules['__main__'], callback, None)
+            if not callable(callback):
+                raise HproseException, "callback must be callable"
+            if onerror == None:
+                onerror = self.onError
+            if onerror != None:
+                if isinstance(onerror, (str, unicode)):
+                    onerror = getattr(modules['__main__'], onerror, None)
+                if not callable(onerror):
+                    raise HproseException, "onerror must be callable"
+            threading.Thread(target = _AsyncInvoke(self.__invoke, name, args,
+                                                   callback, onerror,
+                                                   byref, resultMode, simple)).start()
+
+    def useService(self, uri = None):
+        if uri != None: self.setUri(uri)
+        return _Proxy(self.invoke)
+
+    def setUri(self, uri):
+        self._uri = uri
+
+    uri = property(fset = setUri)
+
+    def _sendAndReceive(self, data):
+        raise NotImplementedError
+
+    def __doOutput(self, name, args, byref, simple):
+        stream = StringIO()
+        writer = HproseWriter(stream, simple)
+        stream.write(HproseTags.TagCall)
+        writer.writeString(name)
+        if (len(asrgs) > 0) or byref:
+            writer.reset()
+            writer.writeList(args)
+            if byref: writer.writeBoolean(True)
+        stream.write(HproseTags.TagEnd)
+        data = self.filter.outputFilter(stream.getvalue())
+        stream.close()
+        return data
+
+    def __doInput(self, data, args, resultMode):
+        data = self.filter.inputFilter(data)
+        if data == None or data[len(data) - 1] != HproseTags.TagEnd:
+            raise HproseException, "Wrong Response: \r\n%s" % data
+        if resultMode == HproseResultMode.RawWithEndTag:
+            return data
+        if resultMode == HproseResultMode.Raw:
+            return data[:-1]
+        stream = StringIO(data)
+        reader = HproseReader(stream)
+        result = None
+        try:
+            error = None
+            while True:
+                tag = stream.read(1)
+                if tag == HproseTags.TagEnd:
+                    break
+                else if tag == HproseTags.TagResult:
+                    if resultMode == HproseResultMode.Normal:
+                        reader.reset()
+                        result = reader.unserialize()
+                    else:
+                        s = reader.readRaw()
+                        result = s.getvalue()
+                        s.close()
+                else if tag == HproseTags.TagArgument:
+                    reader.reset()
+                    a = reader.readList()
+                    if isinstance(args, list):
+                        for i in xrange(len(args)):
+                            args[i] = a[i]
+                else if tag == HproseTags.TagError:
+                    reader.reset()
+                    error = reader.readString()
+                else:
+                    raise HproseException, "Wrong Response: \r\n%s" % data
+            if error != None:
+                raise HproseException, error
+        finally:
+            stream.close()
+        return result
+
+    def __invoke(self, name, args, byref, resultMode, simple):
+        data = self.__doOutput(name, args, byref, simple)
+        data = self._sendAndReceive(data)
+        return self.__doInput(data, args, resultMode)
