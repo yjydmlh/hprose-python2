@@ -57,7 +57,9 @@ class HproseService(object):
 
     def _fixArgs(self, args, function, context):
         if hasattr(function, 'func_code'):
-            if len(args) + 1 == function.func_code.co_argcount:
+            fc = function.func_code
+            c = fc.co_argcount
+            if (len(args) + 1 == c) and (c > 0) and (fc.co_varnames[c - 1] == 'context'):
                 args.append(context)
         return args
 

@@ -117,7 +117,7 @@ class HproseClient(object):
         writer = HproseWriter(stream, simple)
         stream.write(HproseTags.TagCall)
         writer.writeString(name)
-        if (len(asrgs) > 0) or byref:
+        if (len(args) > 0) or byref:
             writer.reset()
             writer.writeList(args)
             if byref: writer.writeBoolean(True)
@@ -128,7 +128,7 @@ class HproseClient(object):
 
     def __doInput(self, data, args, resultMode):
         data = self.filter.inputFilter(data)
-        if data == None or data[len(data) - 1] != HproseTags.TagEnd:
+        if data == None or len(data) == 0 or data[len(data) - 1] != HproseTags.TagEnd:
             raise HproseException, "Wrong Response: \r\n%s" % data
         if resultMode == HproseResultMode.RawWithEndTag:
             return data

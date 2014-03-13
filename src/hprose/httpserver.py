@@ -109,7 +109,7 @@ class HproseHttpService(HproseService):
                 body = self._doFunctionList()
             elif (environ['REQUEST_METHOD'] == 'POST'):
                 data = environ['wsgi.input'].read(int(environ.get("CONTENT_LENGTH", 0)))
-                self._handle(data, environ)
+                body = self._handle(data, environ)
             else:
                 statuscode = '403 Forbidden'
         finally:
@@ -194,6 +194,7 @@ class UrlMapMiddleware:
 
 class HproseHttpServer(HproseHttpService):
     def __init__(self, host = '', port = 80, app = None):
+        super(HproseHttpServer, self).__init__()
         self.host = host
         self.port = port
         if app == None:
