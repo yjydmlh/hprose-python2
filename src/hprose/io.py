@@ -14,7 +14,7 @@
 #                                                          #
 # hprose io for python 2.3+                                #
 #                                                          #
-# LastModified: Mar 11, 2014                               #
+# LastModified: Mar 16, 2014                               #
 # Author: Ma Bingyao <andot@hprose.com>                    #
 #                                                          #
 ############################################################
@@ -307,9 +307,8 @@ class HproseReader(HproseRawReader):
         super(HproseReader, self).__init__(stream)
         self.refer = (simple and [FakeReaderRefer()] or [RealReaderRefer()])[0]
         self.classref = []
-    def unserialize(self, tag = None):
-        if tag == None:
-            tag = self.stream.read(1)
+    def unserialize(self):
+        tag = self.stream.read(1)
         if '0' <= tag <= '9':
             return int(tag);
         if tag == HproseTags.TagInteger:
